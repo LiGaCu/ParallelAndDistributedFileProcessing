@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="author" content="Jiatong Li">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <link rel="icon" href="./JLicon.png">
+    <title>EE451 Histogram Equalization</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+  </head>
+  <body>
+    <h1 class="text-center mb-3">
+        EE451 Project: Parallel and Distributed Histogram Equalization
+    </h1>
+    <div class="justify-content-center">
+        <form class="text-center mb-3" method="post" enctype="multipart/form-data" action="https://server.lijiatong1997.com/upload" id="imageUploadForm">
+            <label for="chooseImage">Choose Image</label>
+            <input type="file" class="form-control-file" id="imageSelector" name="uploaded_file" accept="image/png, image/jpeg">
+        </form>
+    </div>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-6 mb-3">
+                <div>
+                    <img class="w-100" id="chosenImage"/>
+                </div>
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+                <div>
+                    <div id="originalHist"></div>
+                </div>
+            </div>
+            <div class="text-center mt-3 text-primary" style="display: none;" id="processingSpinner">
+                <div class="spinner-border" role="status">
+                  <span class="sr-only"></span>
+                </div>
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+                <div>
+                    <img class="w-100" id="processedImage"/>
+                </div>
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+                <div>
+                    <div id="processedHist"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
+    <script src='https://cdn.plot.ly/plotly-2.6.3.min.js'></script>
+    <script>
+        function drawHistogram(imageElement, chartID, chartTitle) {
+            var canvas = document.createElement("CANVAS");
+            [canvas.width, canvas.height] = [imageElement.naturalWidth, imageElement.naturalHeight];
+            var ctx = canvas.getContext("2d");
+            ctx.drawImage(imageElement, 0, 0);
+            var imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            var imgArray = imgData.data;
+            var imgArrayLen = imgData.height * imgData.width * 4;
+            var possibleGray = true;
+            var histColor = new Array(256).fill(0);;
+            var histGray = new Array(256).fill(0);;
+            // Compute histgram
+            for (var i=0; i<imgArrayLen; i+=4) {
+                if (!(imgArray[i] == imgArray[i+1] && imgArray[i] == imgArray[i+2])) {
+                    possibleGray = false;
+                }
+                var hsvPixel = RGBtoHSV(imgArray[i], imgArray[i+1], imgArray[i+2]);
+                histColor[hsvPixel.v]++;
+                if (possibleGray) {
+                    histGray[imgArray[i]]++;
+                }
+            }
+            var chartData = [{
+                x: [...histGray.keys()],
+                y: possibleGray ? histGray: histColor,
+                type: "bar"  }];
+            var chartLayout = {
+                autosize: false,
+                width: imageElement.width,
+                height: imageElement.height,
+                xaxis: {range: [0, 255], title: "Brightness Value"},
+                yaxis: {title: "Pixels Number"},
+                title: chartTitle
+            };
+            Plotly.newPlot(chartID, chartData, chartLayout);
+        }
+        function RGBtoHSV(r, g, b) {
+            if (arguments.length === 1) {
+                g = r.g, b = r.b, r = r.r;
+            }
+            var max = Math.max(r, g, b), min = Math.min(r, g, b),
+                d = max - min,
+                h,
+                s = (max === 0 ? 0 : d / max),
+                v = max / 255;
+
+            switch (max) {
+                case min: h = 0; break;
+                case r: h = (g - b) + d * (g < b ? 6: 0); h /= 6 * d; break;
+                case g: h = (b - r) + d * 2; h /= 6 * d; break;
+                case b: h = (r - g) + d * 4; h /= 6 * d; break;
+            }
+
+            return {
+                h: Math.round(h * 255),
+                s: Math.round(s * 255),
+                v: Math.round(v * 255)
+            };
+        }
+
+        function showChosenImage(imageSelector, chosenImage, imageUploadForm, processedImage) {
+            var fr = new FileReader();
+            // when image is loaded, set the src of the image where you want to display it
+            fr.onload = function(e) { 
+                chosenImage.src = this.result;
+            };
+            imageSelector.addEventListener("change", function() {
+                // fill fr with image data    
+                fr.readAsDataURL(imageSelector.files[0]);
+
+                fetch(imageUploadForm.action, {
+                    method: 'POST',
+                    body: new FormData(imageUploadForm), // event.target is the form,
+                    mode: 'cors'
+                }).then((res) => {
+                    //return res.text(); // or resp.text() or whatever the server sends
+                    return res.blob();
+                }).then((imageBlob) => {
+                    // Then create a local URL for that image and print it
+                    processedImage.src = URL.createObjectURL(imageBlob);
+                    processedImage.style.display = "block";
+                    document.getElementById("processedHist").style.display = "block";
+                    document.getElementById("processingSpinner").style.display = "none";
+                }).catch((error) => {
+                    if (error) {
+                        console.log(error);
+                    }
+                });
+            });
+        }
+
+        var imageSelector = document.getElementById("imageSelector");
+        var chosenImage = document.getElementById("chosenImage");
+        var imageUploadForm = document.getElementById("imageUploadForm");
+        var processedImage = document.getElementById("processedImage");
+        processedImage.style.display = "none"
+        showChosenImage(imageSelector, chosenImage, imageUploadForm, processedImage);
+        chosenImage.onload = function(e) {
+            processedImage.style.display = "none";
+            document.getElementById("processedHist").style.display = "none";
+            document.getElementById("processingSpinner").style.display = "block";
+            drawHistogram(chosenImage, "originalHist", "Original Histogram on Brightness Value");
+        }
+        processedImage.onload = function(e) {
+            drawHistogram(processedImage, "processedHist", "Processed Histogram on Brightness Value");
+        }
+    </script>
+  </body>
+</html>

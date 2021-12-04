@@ -36,9 +36,6 @@ const upload = multer({ storage: uploadStorage });
 const uploadRst = multer({ storage: resultStorage });
 
 const https = require('https');
-const { resolve } = require('dns');
-const { rejects } = require('assert');
-const e = require('express');
 const privateKey  = fs.readFileSync('/etc/letsencrypt/live/server.lijiatong1997.com/privkey.pem', 'utf8');
 const certificate = fs.readFileSync('/etc/letsencrypt/live/server.lijiatong1997.com/fullchain.pem', 'utf8');
 const credentials = {key: privateKey, cert: certificate};
